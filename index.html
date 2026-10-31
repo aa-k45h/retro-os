@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>RetroOS — Vintage Android Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500&family=VT323&display=swap">
+<style>
+:root{
+  --holo:#33B5E5; --holo-dim:rgba(51,181,229,.18);
+  --bar:#222; --bg:#111; --line:#2a2a2a; --muted:#a8a8a8;
+  --kovai:#99CC00;
+  --lcd:#9BBC0F; --lcd-2:#8BAC0F; --lcd-3:#306230; --lcd-4:#0F380F;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0a0a0a;font-family:Roboto,"Droid Sans",Arial,sans-serif;color:#fff;overflow:hidden;user-select:none;-webkit-user-select:none}
+button{font-family:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+svg{display:block}
+
+/* ---------- device frame ---------- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 40%,#1b1b1b,#050505 70%)}
+#device{position:relative;padding:14px;border-radius:44px;background:#1a1a1a;box-shadow:0 0 0 2px #333,0 30px 80px rgba(0,0,0,.8),inset 0 0 0 1px #444;transform-origin:center center}
+#device::before{content:"";position:absolute;top:5px;left:50%;width:60px;height:4px;margin-left:-30px;border-radius:2px;background:#333}
+#powerBtn{position:absolute;right:-5px;top:180px;width:5px;height:70px;border-radius:0 3px 3px 0;background:#2c2c2c}
+#volBtn{position:absolute;left:-5px;top:150px;width:5px;height:110px;border-radius:3px 0 0 3px;background:#2c2c2c}
+#hint{position:fixed;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:#666;letter-spacing:.5px}
+body.mobile #device{padding:0;border-radius:0;box-shadow:none;background:#000}
+body.mobile #device::before,body.mobile #powerBtn,body.mobile #volBtn,body.mobile #hint{display:none}
+#phone{position:relative;width:390px;height:844px;background:#000;overflow:hidden;border-radius:30px;display:flex;flex-direction:column}
+body.mobile #phone{width:100vw;height:100vh;height:100dvh;border-radius:0}
+
+/* ---------- status + nav ---------- */
+#status{height:24px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:14px;background:rgba(0,0,0,.75);position:relative;z-index:30}
+#status .l,#status .r{display:flex;align-items:center;gap:6px}
+#status .tag{font-size:11px;font-weight:500;letter-spacing:1px;color:var(--kovai);display:none}
+body.kovai #status .tag{display:inline}
+#nav{height:48px;flex:none;display:flex;align-items:center;justify-content:space-around;background:#000;position:relative;z-index:30}
+#nav button{width:72px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:4px}
+#nav button:active{background:rgba(51,181,229,.25)}
+body.locked #nav{opacity:.4;pointer-events:none}
+#screen{flex:1;position:relative;overflow:hidden}
+
+/* ---------- wallpapers ---------- */
+.wall{position:absolute;inset:0;background:#000}
+.wall.w0{background-image:repeating-linear-gradient(135deg,rgba(51,181,229,.05) 0 1px,transparent 1px 26px)}
+.wall.w2{background-image:linear-gradient(rgba(51,181,229,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(51,181,229,.08) 1px,transparent 1px);background-size:32px 32px}
+.wall svg{position:absolute;inset:0;width:100%;height:100%}
+.wall .kovaiArt{display:none}
+body.kovai .wall{background:#0d1b2a}
+body.kovai .wall .streaks{display:none}
+body.kovai .wall .kovaiArt{display:block}
+
+/* ---------- layers ---------- */
+.layer{position:absolute;inset:0;display:flex;flex-direction:column;transition:opacity .28s ease,transform .28s ease}
+.layer.hidden{opacity:0;pointer-events:none}
+#lock.hidden{transform:translateY(-30px)}
+#app{background:var(--bg);z-index:10}
+#app.hidden{transform:scale(.92)}
+
+/* ---------- lock screen ---------- */
+#lock{z-index:20;align-items:center}
+.bigclock{font-size:104px;line-height:1;letter-spacing:-2px;margin-top:88px;position:relative}
+.bigclock b{font-weight:500}.bigclock span{font-weight:100}
+.lockdate{font-size:14px;letter-spacing:2px;color:#ccc;margin-top:6px;position:relative}
+.owner{font-size:13px;color:#9a9a9a;margin-top:12px;position:relative;display:flex;align-items:center;gap:6px}
+.ring{position:relative;width:280px;height:280px;margin-top:auto}
+.ring .o{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(255,255,255,.22);transition:border-color .2s}
+.ring .i{position:absolute;inset:48px;border-radius:50%;border:1px dashed rgba(51,181,229,.35)}
+.ring.active .o{border-color:rgba(51,181,229,.7);box-shadow:0 0 30px rgba(51,181,229,.25)}
+#knob{position:absolute;left:104px;top:104px;width:72px;height:72px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;touch-action:none;z-index:2}
+.target{position:absolute;top:116px;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:transform .2s,opacity .2s;opacity:.25}
+.ring.active .target{opacity:1}
+.target.unl{right:-24px;border:2px solid var(--holo);background:rgba(51,181,229,.18);box-shadow:0 0 18px rgba(51,181,229,.6)}
+.target.cam{left:-24px;border:1px solid #666;background:rgba(0,0,0,.6)}
+.target.hot{transform:scale(1.25)}
+.lockhint{font-size:14px;color:#9a9a9a;margin:18px 0 34px;position:relative}
+
+/* ---------- home ---------- */
+#home{z-index:5}
+.search{margin:14px 16px 0;height:44px;display:flex;align-items:center;gap:12px;padding:0 8px;border-bottom:1px solid rgba(255,255,255,.35);position:relative;font-size:17px;color:#bbb}
+#clockWidget{margin-top:40px;display:flex;flex-direction:column;align-items:center;position:relative;touch-action:none;transition:transform .3s}
+#clockWidget.pressing{transform:scale(.94)}
+#clockWidget .t{font-size:72px;line-height:1;letter-spacing:-1px}
+#clockWidget .t b{font-weight:500}#clockWidget .t span{font-weight:100}
+#clockWidget .d{font-size:14px;letter-spacing:2px;color:#ccc}
+.weather{display:none;margin:22px 16px 0;padding:16px 18px;background:rgba(0,0,0,.55);border:1px solid rgba(153,204,0,.45);align-items:center;gap:16px;position:relative;touch-action:none}
+body.kovai #clockWidget{display:none}
+body.kovai .weather{display:flex}
+.weather .city{font-size:13px;letter-spacing:1px;color:#c8e68a}
+.weather .deg{font-size:44px;font-weight:100;line-height:1}
+.weather .sub{font-size:13px;color:#ccc}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));row-gap:20px;padding:0 8px;position:relative;margin-top:auto}
+.icon{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;text-shadow:0 1px 2px #000;position:relative}
+.icon .tile{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.7);transition:transform .12s}
+.icon:active .tile{transform:scale(.9)}
+.icon .new{position:absolute;top:-4px;right:6px;background:var(--kovai);color:#000;font-size:9px;font-weight:500;padding:1px 4px;text-shadow:none}
+.dots{display:flex;justify-content:center;gap:6px;margin-top:22px;position:relative}
+.dots i{width:20px;height:3px;background:#555}.dots i.on{background:var(--holo)}
+body.kovai .dots i.on{background:var(--kovai)}
+.dockline{margin:14px 12px 0;height:1px;background:rgba(255,255,255,.18);position:relative}
+.dock{height:84px;display:flex;align-items:center;justify-content:space-around;padding:0 8px;position:relative}
+.dock .tile{width:52px;height:52px;border-radius:13px;display:flex;align-items:center;justify-content:center}
+.dock .drawer{width:56px;height:56px;border-radius:50%;border:2px solid #ddd;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+
+/* ---------- app chrome ---------- */
+.abar{height:56px;flex:none;background:var(--bar);display:flex;align-items:center;gap:12px;padding:0 4px 0 12px;border-bottom:2px solid var(--holo)}
+.abar .ttl{flex:1;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.abar .ai{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
+.abar .act{width:48px;height:48px;display:flex;align-items:center;justify-content:center}
+.content{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:thin;scrollbar-color:#444 transparent}
+.tabs{height:44px;flex:none;background:#1a1a1a;display:grid;grid-template-columns:1fr 1fr}
+.tabs button{font-size:14px;font-weight:500;letter-spacing:1px;color:var(--muted);border-bottom:1px solid #333}
+.tabs button.on{color:#fff;border-bottom:4px solid var(--holo)}
+.row{min-height:60px;width:100%;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line);text-align:left}
+.row:active{background:var(--holo-dim)}
+.row .tx{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+.row .tx b{font-weight:400;font-size:17px}
+.row .tx small{font-size:13px;color:#a0a0a0}
+.sect{margin:16px 16px 0;padding-bottom:6px;border-bottom:1px solid var(--holo);font-size:13px;font-weight:500;letter-spacing:1px;color:var(--holo)}
+.crumb{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#1a1a1a;font-size:13px}
+.crumb b{color:var(--holo);font-weight:500;letter-spacing:1px}
+.meter{height:3px;background:#333}.meter i{display:block;height:3px;background:var(--holo)}
+
+/* toggle */
+.tog{width:92px;height:30px;padding:2px;display:grid;grid-template-columns:1fr 1fr;background:#2b2b2b;border:1px solid #444;flex:none}
+.tog span{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500}
+.tog.on span:last-child{background:var(--holo);color:#000}
+.tog:not(.on) span:first-child{background:#555;color:#fff}
+
+/* gallery */
+.albums{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px}
+.album{position:relative;aspect-ratio:1/1;overflow:hidden;text-align:left}
+.album .st{position:absolute;overflow:hidden}
+.album .st svg{width:100%;height:100%}
+.album .lab{position:absolute;left:0;right:0;bottom:0;height:40px;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:14px}
+.album .lab span:last-child{color:var(--holo)}
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:3px}
+.photos button{aspect-ratio:1/1;overflow:hidden}
+.photos svg{width:100%;height:100%}
+#viewer{position:absolute;inset:0;background:#000;z-index:15;display:flex;flex-direction:column}
+#viewer .img{flex:1;display:flex;align-items:center;justify-content:center;touch-action:pan-y;overflow:hidden}
+#viewer .img svg{width:100%;height:auto;max-height:100%;transition:transform .2s}
+#viewer .vbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;background:rgba(0,0,0,.7)}
+
+/* music */
+.art{margin:20px 24px 0;aspect-ratio:1/1;max-height:42%;background:#1a1a1a;border:1px solid #2c2c2c;display:flex;align-items:center;justify-content:center;align-self:center;width:calc(100% - 48px)}
+.art svg{width:76%;height:76%}
+.spin{animation:spin 6s linear infinite}
+.paused .spin{animation-play-state:paused}
+@keyframes spin{to{transform:rotate(360deg)}}
+.seek{height:20px;position:relative;display:flex;align-items:center;cursor:pointer;touch-action:none}
+.seek .bg{width:100%;height:4px;background:#3a3a3a}
+.seek .fill{position:absolute;left:0;height:4px;background:var(--holo)}
+.seek .th{position:absolute;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--holo);box-shadow:0 0 10px rgba(51,181,229,.8)}
+.ctrls{display:flex;align-items:center;justify-content:space-between;margin:8px 16px 0}
+.ctrls .big{width:76px;height:76px;border-radius:50%;border:2px solid var(--holo);background:rgba(51,181,229,.12);display:flex;align-items:center;justify-content:center}
+.ctrls button{width:52px;height:52px;display:flex;align-items:center;justify-content:center}
+.trow.on .tx b{color:var(--holo)}
+
+/* snake */
+.snakeWrap{display:flex;flex-direction:column;align-items:center;flex:1;overflow:hidden}
+.score{width:342px;max-width:calc(100% - 32px);display:flex;justify-content:space-between;align-items:baseline;font-family:VT323,monospace;margin-top:12px}
+.score .s{font-size:26px}.score .s b{font-weight:400;color:#99CC00}.score .b{font-size:22px;color:var(--muted)}
+.board{margin-top:8px;padding:8px;background:var(--lcd-3);border:2px solid var(--lcd-4);box-shadow:inset 0 0 0 2px var(--lcd-2);position:relative;transition:background .3s,border-color .3s,box-shadow .3s}
+.board canvas{display:block;width:342px;height:342px;max-width:calc(100vw - 52px);max-height:calc(100vw - 52px);touch-action:none}
+.board.power{background:#12306b;border-color:#FF8800;box-shadow:0 0 24px rgba(255,136,0,.55),inset 0 0 0 2px #2b5fd9}
+.banner9000{position:absolute;left:0;right:0;top:50px;display:flex;flex-direction:column;align-items:center;font-family:VT323,monospace;line-height:1;pointer-events:none;opacity:0;transform:scale(.6);transition:opacity .25s,transform .25s}
+.banner9000.show{opacity:1;transform:scale(1)}
+.banner9000 span{font-size:28px;letter-spacing:6px;color:#9db8ff}
+.banner9000 b{font-weight:400;font-size:62px;white-space:nowrap;color:#FF8800;text-shadow:3px 3px 0 #2b5fd9,0 0 22px rgba(255,136,0,.8)}
+.pad{display:grid;grid-template-columns:repeat(3,58px);gap:4px;margin:auto 0}
+.pad button{height:56px;background:#2a2a2a;border:1px solid #444;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.pad button:active{background:#3a3a3a;border-color:var(--holo)}
+.pad.power button{border-color:#FF8800}
+.pad .mid{display:flex;align-items:center;justify-content:center}
+.pad .mid i{width:22px;height:22px;border-radius:50%;background:#1d1d1d;border:1px solid #3a3a3a}
+.pad.power .mid i{background:#FF8800;box-shadow:0 0 12px #FF8800;border-color:#FF8800}
+.speedTag{font-size:12px;font-weight:500;letter-spacing:1px;color:#000;background:#FF8800;padding:4px 8px;margin-right:12px;display:none}
+.abar.power{border-bottom-color:#FF8800}
+.abar.power .speedTag{display:inline}
+
+/* golazo */
+#golazo{position:absolute;inset:0;z-index:12;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;overflow:hidden}
+#golazo .card{position:relative;width:calc(100% - 72px);background:#282828;border-top:4px solid #FFDF00;box-shadow:0 10px 34px rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;padding:26px 20px 0;gap:6px;animation:pop .35s cubic-bezier(.2,1.6,.4,1)}
+#golazo .g{font-family:VT323,monospace;font-size:64px;line-height:1;color:#FFDF00;letter-spacing:2px;text-shadow:3px 3px 0 #009C3B}
+#golazo .ok{align-self:stretch;margin:18px -20px 0;height:52px;border-top:1px solid #3a3a3a;font-size:15px;letter-spacing:1px}
+.conf{position:absolute;top:-20px;width:9px;height:15px;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(900px) rotate(720deg)}}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.ball{animation:samba .5s ease-in-out infinite alternate}
+@keyframes samba{from{transform:rotate(-14deg) translateY(0)}to{transform:rotate(14deg) translateY(-6px)}}
+
+/* dialogs / toast / overlays */
+#dim{position:absolute;inset:0;background:rgba(0,0,0,.6);z-index:40;display:none;align-items:center;justify-content:center}
+#dim.show{display:flex}
+.dlg{width:calc(100% - 48px);max-height:80%;background:#282828;border:1px solid #3a3a3a;box-shadow:0 8px 30px rgba(0,0,0,.8);display:flex;flex-direction:column;animation:pop .2s ease-out}
+.dlg h3{margin:0;padding:18px 18px 12px;font-size:20px;font-weight:400;color:var(--holo);border-bottom:2px solid var(--holo)}
+.dlg.green h3{color:var(--kovai);border-color:var(--kovai)}
+.dlg .body{padding:16px 18px;overflow:auto;font-size:15px;line-height:1.5;color:#ddd}
+.dlg .btns{display:grid;border-top:1px solid #3a3a3a}
+.dlg .btns button{height:52px;font-size:16px}
+.dlg .btns button+button{border-left:1px solid #3a3a3a}
+.dlg .btns button:active{background:var(--holo-dim)}
+.credit{height:40px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #383838;font-size:14px}
+.credit span:first-child{color:var(--muted)}
+#toast{position:absolute;left:50%;bottom:72px;transform:translateX(-50%) translateY(10px);background:#3a3a3a;border:1px solid #555;color:#fff;font-size:15px;padding:10px 18px;max-width:86%;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.6);z-index:50;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#recents{position:absolute;inset:0;z-index:35;background:rgba(0,0,0,.85);display:none;flex-direction:column;justify-content:flex-end;padding:16px;gap:10px}
+#recents.show{display:flex}
+#recents .rc{height:64px;background:#222;border-left:3px solid var(--holo);display:flex;align-items:center;gap:14px;padding:0 14px;font-size:16px;text-align:left}
+#recents .empty{color:#999;text-align:center;margin:auto}
+#drawerPane{position:absolute;inset:0;z-index:25;background:rgba(0,0,0,.92);display:none;flex-direction:column}
+#drawerPane.show{display:flex}
+#drawerPane .grid{margin-top:20px}
+.kv{display:none}
+body.kovai .kv{display:flex}
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="device">
+<div id="powerBtn" title="Power (locks the phone)"></div>
+<div id="volBtn"></div>
+<div id="phone">
+  <div id="status">
+    <div class="l"><span class="tag">KOVAI MODE</span><span id="sbIcons" class="l"></span></div>
+    <div class="r"><span id="wifiIco"></span><span id="sigIco"></span><span id="batIco"></span><span id="sbTime">12:00</span></div>
+  </div>
+  <div id="screen">
+    <div class="wall" id="wall">
+      <svg class="streaks" viewBox="0 0 390 800" preserveAspectRatio="none" aria-hidden="true"><path d="M-40 470 C 120 390, 260 420, 430 310" fill="none" stroke="#33B5E5" stroke-opacity=".32" stroke-width="1.5"/><path d="M-40 510 C 140 420, 270 450, 430 350" fill="none" stroke="#33B5E5" stroke-opacity=".16" stroke-width="6"/><path d="M-40 550 C 150 470, 280 490, 430 400" fill="none" stroke="#33B5E5" stroke-opacity=".1" stroke-width="1"/></svg>
+      <svg class="kovaiArt" viewBox="0 0 390 800" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><circle cx="292" cy="280" r="34" fill="#F2A541" fill-opacity=".9"/><path d="M0 340 L60 280 L110 310 L170 240 L230 300 L300 250 L390 310 V800 H0Z" fill="#163049"/><path d="M0 400 L50 360 L120 390 L190 330 L260 380 L330 340 L390 370 V800 H0Z" fill="#1d4650"/><path d="M0 460 L80 420 L150 450 L220 410 L300 450 L390 420 V800 H0Z" fill="#245b4f"/><path d="M0 520 L70 490 L160 515 L250 480 L330 510 L390 495 V800 H0Z" fill="#2c6e4c"/></svg>
+    </div>
+
+    <!-- LOCK -->
+    <section id="lock" class="layer" aria-label="Lock screen">
+      <div class="bigclock"><b id="lkH">12</b><span id="lkM">:00</span></div>
+      <div class="lockdate" id="lkDate">SATURDAY, OCTOBER 31</div>
+      <div class="owner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 5-7 8-7s7 2 8 7"/></svg>Nikil's phone</div>
+      <div class="ring" id="ring">
+        <div class="o"></div><div class="i"></div>
+        <div class="target cam" id="tCam"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2"><path d="M4 8h4l2-3h4l2 3h4v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+        <div class="target unl" id="tUnl"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#33B5E5" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg></div>
+        <button id="knob" aria-label="Drag right to unlock, left for camera"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+      </div>
+      <div class="lockhint" id="lockHint">Drag the lock to the right to unlock</div>
+    </section>
+
+    <!-- HOME -->
+    <section id="home" class="layer hidden" aria-label="Home screen">
+      <div class="search"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ddd" stroke-width="2"><circle cx="10" cy="10" r="6"/><path d="M15 15l6 6"/></svg><span style="flex:1">Search</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ddd" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+      <div id="clockWidget" title="Long-press for a surprise"><div class="t"><b id="hmH">12</b><span id="hmM">:00</span></div><div class="d" id="hmDate">SAT, OCTOBER 31</div></div>
+      <div class="weather" id="weather">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#F2A541" stroke-width="1.6"><circle cx="9" cy="10" r="3.5"/><path d="M9 3v1.5M3 10h1.5M4.8 5.8l1 1M13.2 5.8l-1 1"/><path d="M9 20h10a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.4 1A3 3 0 0 0 9 20z" stroke="#ddd"/></svg>
+        <div style="flex:1;display:flex;flex-direction:column;gap:2px"><span class="city">COIMBATORE</span><span class="deg">24°</span><span class="sub">Breezy evening · Ghats view clear</span></div>
+      </div>
+      <div class="grid" id="homeGrid"></div>
+      <div class="dots"><i></i><i class="on"></i><i></i></div>
+      <div class="dockline"></div>
+      <div class="dock" id="dock"></div>
+    </section>
+
+    <div id="drawerPane"><div class="abar"><span class="ttl">All apps</span></div><div class="grid" id="drawerGrid"></div></div>
+
+    <!-- APP -->
+    <section id="app" class="layer hidden" aria-label="App"></section>
+
+    <div id="recents"></div>
+    <div id="dim"></div>
+    <div id="toast" role="status"></div>
+  </div>
+  <nav id="nav">
+    <button id="bBack" aria-label="Back"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><path d="M8 5L4 9l4 4M4 9h11a5 5 0 0 1 0 10H9"/></svg></button>
+    <button id="bHome" aria-label="Home"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/></svg></button>
+    <button id="bRec" aria-label="Recent apps"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><rect x="8" y="3" width="13" height="13"/><path d="M4 7v14h14"/></svg></button>
+  </nav>
+</div>
+</div>
+<div id="hint">Click the side button to lock · Arrow keys play Snake</div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('retroos_'+k); return v === null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('retroos_'+k, JSON.stringify(v)); }catch(e){} }
+};
+const S = {
+  wifi: store.get('wifi', true), bt: store.get('bt', false), wall: store.get('wall', 0),
+  kovai: store.get('kovai', false), dev: store.get('dev', false), vini: store.get('vini', false),
+  best: store.get('best', 0), battery: 86, recents: [], app: null, locked: true
+};
+
+/* ---------------- icons ---------------- */
+const G = {
+  gallery:'<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/>',
+  snake:'<path d="M4 18h6v-6h6V6h3" stroke-width="2.5" stroke-linecap="square"/><circle cx="7" cy="7" r="1.6" fill="#fff" stroke="none"/>',
+  files:'<path d="M3 6h6l2 2h10v11H3z"/>',
+  music:'<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  settings:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  calc:'<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M8 7h8M8 12h2M14 12h2M8 16h2M14 16h2"/>',
+  notes:'<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7"/>',
+  phone:'<path d="M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a1 1 0 0 1-1 1A17 17 0 0 1 4 5a1 1 0 0 1 1-1z"/>',
+  msg:'<path d="M4 5h16v11H9l-5 4z"/>',
+  camera:'<path d="M4 8h4l2-3h4l2 3h4v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  browser:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  coffee:'<path d="M7 9h10l-1.5 11h-7z"/><path d="M5 9h14M10 3c0 2 2 2 2 4M14 3c0 2 2 2 2 4"/>',
+  drop:'<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
+  hills:'<path d="M2 19l7-11 4 6 3-4 6 9z"/>',
+  file:'<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/>',
+  chev:'<path d="M9 6l6 6-6 6"/>',
+  more:'<rect x="10" y="4" width="4" height="4" fill="#ddd" stroke="none"/><rect x="10" y="10" width="4" height="4" fill="#ddd" stroke="none"/><rect x="10" y="16" width="4" height="4" fill="#ddd" stroke="none"/>',
+  up:'<path d="M12 6l7 10H5z" fill="currentColor" stroke="none"/>',
+  down:'<path d="M12 18l7-10H5z" fill="currentColor" stroke="none"/>',
+  left:'<path d="M6 12l10-7v14z" fill="currentColor" stroke="none"/>',
+  right:'<path d="M18 12L8 5v14z" fill="currentColor" stroke="none"/>',
+  play:'<path d="M7 4v16l13-8z" fill="#fff" stroke="none"/>',
+  pause:'<rect x="6" y="5" width="4" height="14" fill="#fff" stroke="none"/><rect x="14" y="5" width="4" height="14" fill="#fff" stroke="none"/>',
+  prev:'<rect x="4" y="5" width="2.5" height="14" fill="#fff" stroke="none"/><path d="M20 5v14L8 12z" fill="#fff" stroke="none"/>',
+  next:'<rect x="17.5" y="5" width="2.5" height="14" fill="#fff" stroke="none"/><path d="M4 5v14l12-7z" fill="#fff" stroke="none"/>',
+  shuffle:'<path d="M3 6h4l10 12h4M3 18h4l3-3.6M14 9.6L17 6h4M18 3l3 3-3 3M18 15l3 3-3 3"/>',
+  repeat:'<path d="M4 11V8h14M15 5l3 3-3 3M20 13v3H6M9 19l-3-3 3-3"/>',
+  wifi:'<path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1" fill="#ccc"/>',
+  bt:'<path d="M7 7l10 10-5 5V2l5 5L7 17"/>',
+  data:'<path d="M4 20V14M10 20V9M16 20V12M22 20V5"/>',
+  sound:'<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',
+  display:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
+  storage:'<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 14h16M8 17h2"/>',
+  battery:'<rect x="7" y="4" width="10" height="17" rx="1"/><path d="M10 2h4"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="1" fill="#ccc"/>',
+  back:'<path d="M15 5l-7 7 7 7"/>'
+};
+const svg = (name, size=24, stroke='#fff', sw=2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${sw}" aria-hidden="true">${G[name]}</svg>`;
+
+/* ---------------- time / status ---------------- */
+const DAYS=['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+const MONTHS=['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+function tickClock(){
+  const d=new Date(); let h=d.getHours()%12||12; const m=String(d.getMinutes()).padStart(2,'0');
+  $('#sbTime').textContent=`${h}:${m}`;
+  $('#lkH').textContent=h; $('#lkM').textContent=':'+m;
+  $('#hmH').textContent=h; $('#hmM').textContent=':'+m;
+  $('#lkDate').textContent=`${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  $('#hmDate').textContent=`${DAYS[d.getDay()].slice(0,3)}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+function drawStatus(){
+  const c = S.kovai ? '#99CC00' : '#33B5E5';
+  $('#wifiIco').innerHTML = S.wifi ? `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 14L1 6a10 10 0 0 1 14 0z" fill="${c}"/></svg>` : '';
+  $('#sigIco').innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M15 1v14H1z" fill="${c}"/></svg>`;
+  const lvl = Math.max(1, Math.round(S.battery/100*13));
+  $('#batIco').innerHTML = `<svg width="9" height="16" viewBox="0 0 9 16"><rect x="2.5" y="0" width="4" height="2" fill="#fff"/><rect x=".5" y="2.5" width="8" height="13" fill="none" stroke="#fff"/><rect x="1.5" y="${15-lvl}" width="6" height="${lvl}" fill="${S.battery<16?'#FF4444':'#fff'}"/></svg>`;
+  let ic='';
+  if(S.bt) ic+=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">${G.bt}</svg>`;
+  if(Music.playing) ic+=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">${G.music}</svg>`;
+  $('#sbIcons').innerHTML=ic;
+}
+setInterval(tickClock, 1000);
+setInterval(()=>{ S.battery = S.battery<=5 ? 100 : S.battery-1; drawStatus(); }, 120000);
+
+/* ---------------- toast / dialog ---------------- */
+let toastT;
+function toast(msg, ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'), ms); }
+function dialog(title, html, buttons=[{label:'OK'}], cls=''){
+  const dim=$('#dim');
+  dim.innerHTML=`<div class="dlg ${cls}" role="dialog" aria-label="${title}"><h3>${title}</h3><div class="body">${html}</div><div class="btns" style="grid-template-columns:repeat(${buttons.length},1fr)">${buttons.map((b,i)=>`<button data-i="${i}">${b.label}</button>`).join('')}</div></div>`;
+  dim.classList.add('show');
+  dim.querySelectorAll('.btns button').forEach(b=>b.onclick=()=>{ dim.classList.remove('show'); const f=buttons[+b.dataset.i].fn; if(f) f(); });
+}
+const dialogOpen = () => $('#dim').classList.contains('show');
+
+/* ---------------- wallpaper / modes ---------------- */
+function applyWall(){ const w=$('#wall'); w.className='wall w'+S.wall; w.querySelector('.streaks').style.display = S.wall===0 ? '' : 'none'; }
+function applyKovai(){ document.body.classList.toggle('kovai', S.kovai); drawStatus(); renderHome(); }
+
+/* ---------------- home ---------------- */
+const APPS = [
+  {id:'gallery', name:'Gallery', color:'#0099CC', g:'gallery'},
+  {id:'snake', name:'Snake', color:'#669900', g:'snake'},
+  {id:'files', name:'Files', color:'#E07B00', g:'files'},
+  {id:'music', name:'Music', color:'#9933CC', g:'music'},
+  {id:'settings', name:'Settings', color:'#4a4a4a', g:'settings'},
+  {id:'clock', name:'Clock', color:'#2b2b2b', g:'clock', soon:true},
+  {id:'calc', name:'Calculator', color:'#3d3d3d', g:'calc', soon:true},
+  {id:'notes', name:'Notes', color:'#B8860B', g:'notes', soon:true}
+];
+const KOVAI_APPS = [
+  {id:'coffee', name:'Filter Coffee', color:'#6b3f22', g:'coffee', kovai:true},
+  {id:'siruvani', name:'Siruvani', color:'#0099CC', g:'drop', kovai:true},
+  {id:'ooty', name:'Ooty Trip', color:'#669900', g:'hills', kovai:true}
+];
+const iconBtn = a => `<button class="icon" data-app="${a.id}"><span class="tile" style="background:${a.color}">${svg(a.g,30)}</span><span>${a.name}</span>${a.kovai?'<span class="new">NEW</span>':''}</button>`;
+function renderHome(){
+  const list = S.kovai ? [...KOVAI_APPS, APPS[3], APPS[0], APPS[1], APPS[2]] : APPS;
+  $('#homeGrid').innerHTML = list.map(iconBtn).join('');
+  $('#drawerGrid').innerHTML = [...APPS, ...(S.kovai?KOVAI_APPS:[])].map(iconBtn).join('');
+  $('#dock').innerHTML = [
+    `<button aria-label="Phone" data-app="phone"><span class="tile" style="background:#669900">${svg('phone',26)}</span></button>`,
+    `<button aria-label="Messages" data-app="msg"><span class="tile" style="background:#0099CC">${svg('msg',26)}</span></button>`,
+    `<button aria-label="All apps" id="drawerBtn"><span class="drawer"><svg width="24" height="24" viewBox="0 0 24 24" fill="#fff">${[3,10,17].map(y=>[3,10,17].map(x=>`<rect x="${x}" y="${y}" width="4" height="4"/>`).join('')).join('')}</svg></span></button>`,
+    `<button aria-label="Camera" data-app="camera"><span class="tile" style="background:#333">${svg('camera',26)}</span></button>`,
+    `<button aria-label="Browser" data-app="browser"><span class="tile" style="background:#CC0000">${svg('browser',26)}</span></button>`
+  ].join('');
+  $('#drawerBtn').onclick = () => $('#drawerPane').classList.add('show');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-app]'); if(!b) return;
+  $('#drawerPane').classList.remove('show');
+  launch(b.dataset.app);
+});
+function launch(id){
+  const fun = {
+    clock:'Clock is coming in the next update.', calc:'Calculator is coming in the next update.', notes:'Notes is coming in the next update.',
+    phone:'No SIM card. Calls are not possible.', msg:'Messages is coming in the next update.', browser:'No internet... it is 2012 after all.',
+    coffee:'Decoction brewing. Filter coffee ready in 3 minutes, maapla.', siruvani:'Siruvani water: famously sweet, they say in Kovai.',
+    ooty:'Ooty trip planned: a few hours up the ghats from Kovai.'
+  };
+  if(id==='camera'){ openApp('gallery'); Gal.openAlbum(0); return; }
+  if(fun[id]){ toast(fun[id]); return; }
+  openApp(id);
+}
+
+/* long-press clock → Kovai mode */
+function longPress(el, ms, fn){
+  let t;
+  const start = () => { el.classList.add('pressing'); t=setTimeout(()=>{ el.classList.remove('pressing'); fn(); }, ms); };
+  const end = () => { el.classList.remove('pressing'); clearTimeout(t); };
+  el.addEventListener('pointerdown', start);
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,end));
+  el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+function toggleKovai(){
+  S.kovai = !S.kovai; store.set('kovai', S.kovai); applyKovai();
+  if(S.kovai){
+    dialog('Vanakkam, maapla!', 'Kovai Mode unlocked. Dedicated to <b>Lalith</b>, straight from Coimbatore.<br><br><span style="color:#aaa">New: Western Ghats wallpaper, Coimbatore weather, Filter Coffee, Siruvani, Ooty Trip, a secret Kovai folder in Files and a bonus track in Music.</span>', [{label:'Semma!'}], 'green');
+  } else toast('Kovai Mode off. Long-press the weather to bring it back.');
+}
+longPress($('#clockWidget'), 3000, toggleKovai);
+longPress($('#weather'), 3000, toggleKovai);
+
+/* ---------------- lock screen ---------------- */
+(function lockScreen(){
+  const knob=$('#knob'), ring=$('#ring'); let sx=0, sy=0, drag=false, dx=0, dy=0;
+  knob.addEventListener('pointerdown', e=>{ drag=true; sx=e.clientX; sy=e.clientY; knob.setPointerCapture(e.pointerId); ring.classList.add('active'); knob.style.transition='none'; });
+  knob.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const sc = scale(); dx=(e.clientX-sx)/sc; dy=(e.clientY-sy)/sc;
+    const r=Math.hypot(dx,dy), max=116; if(r>max){ dx=dx/r*max; dy=dy/r*max; }
+    knob.style.transform=`translate(${dx}px,${dy}px)`;
+    $('#tUnl').classList.toggle('hot', dx>90 && Math.abs(dy)<50);
+    $('#tCam').classList.toggle('hot', dx<-90 && Math.abs(dy)<50);
+  });
+  const release=()=>{
+    if(!drag) return; drag=false; ring.classList.remove('active');
+    knob.style.transition='transform .25s'; knob.style.transform='';
+    $('#tUnl').classList.remove('hot'); $('#tCam').classList.remove('hot');
+    if(dx>90 && Math.abs(dy)<50) unlock();
+    else if(dx<-90 && Math.abs(dy)<50){ unlock(); openApp('gallery'); Gal.openAlbum(0); }
+    else if(Math.hypot(dx,dy)<6){ $('#lockHint').textContent='Drag, don’t tap. Pull the lock to the right.'; }
+    dx=dy=0;
+  };
+  knob.addEventListener('pointerup', release); knob.addEventListener('pointercancel', release);
+  knob.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '||e.key==='ArrowRight'){ e.preventDefault(); unlock(); } });
+})();
+function unlock(){ S.locked=false; document.body.classList.remove('locked'); $('#lock').classList.add('hidden'); $('#home').classList.remove('hidden'); $('#lockHint').textContent='Drag the lock to the right to unlock'; }
+function lock(){ closeApp(true); $('#recents').classList.remove('show'); $('#drawerPane').classList.remove('show'); $('#dim').classList.remove('show'); S.locked=true; document.body.classList.add('locked'); $('#lock').classList.remove('hidden'); $('#home').classList.add('hidden'); }
+$('#powerBtn').onclick = () => S.locked ? unlock() : lock();
+
+/* ---------------- app shell ---------------- */
+const APP_IMPL = {};
+function openApp(id){
+  const impl = APP_IMPL[id]; if(!impl) return;
+  if(S.app) closeApp(true);
+  const meta = APPS.find(a=>a.id===id);
+  S.app = id; S.recents = [id, ...S.recents.filter(x=>x!==id)].slice(0,6);
+  const el = $('#app');
+  el.innerHTML = `<div class="abar" id="abar"><span class="ai" style="background:${meta.color}">${svg(meta.g,20)}</span><span class="ttl" id="abTitle">${meta.name}</span><span id="abActs" style="display:flex;align-items:center"></span></div><div class="content" id="content"></div>`;
+  el.classList.remove('hidden');
+  impl.open($('#content'));
+}
+function closeApp(silent){
+  if(!S.app) return;
+  const impl = APP_IMPL[S.app]; if(impl.close) impl.close();
+  S.app = null; $('#app').classList.add('hidden');
+}
+function setTitle(t){ const e=$('#abTitle'); if(e) e.textContent=t; }
+function setActs(html){ const e=$('#abActs'); if(e) e.innerHTML=html; }
+
+$('#bBack').onclick = () => {
+  if(dialogOpen()){ $('#dim').classList.remove('show'); return; }
+  if($('#recents').classList.contains('show')){ $('#recents').classList.remove('show'); return; }
+  if($('#drawerPane').classList.contains('show')){ $('#drawerPane').classList.remove('show'); return; }
+  if(S.app){ const impl=APP_IMPL[S.app]; if(impl.back && impl.back()) return; closeApp(); }
+};
+$('#bHome').onclick = () => { $('#dim').classList.remove('show'); $('#recents').classList.remove('show'); $('#drawerPane').classList.remove('show'); closeApp(); };
+$('#bRec').onclick = () => {
+  const r=$('#recents');
+  if(r.classList.contains('show')){ r.classList.remove('show'); return; }
+  r.innerHTML = S.recents.length ? S.recents.map(id=>{ const a=APPS.find(x=>x.id===id); return `<button class="rc" data-rec="${id}"><span class="ai" style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:${a.color}">${svg(a.g,20)}</span>${a.name}</button>`; }).join('') : '<div class="empty">No recent apps</div>';
+  r.querySelectorAll('[data-rec]').forEach(b=>b.onclick=()=>{ r.classList.remove('show'); openApp(b.dataset.rec); });
+  r.classList.add('show');
+};
+
+/* ---------------- procedural photos ---------------- */
+function rng(seed){ let s = (seed*9301+49297)%233280 || 1; return ()=>{ s=(s*16807)%2147483647; return (s-1)/2147483646; }; }
+const GEN = {
+  land(seed, p){ const r=rng(seed); let h=`<rect width="120" height="120" fill="${p[0]}"/><circle cx="${20+r()*80}" cy="${18+r()*28}" r="${6+r()*9}" fill="${p[1]}"/>`;
+    for(let i=0;i<3;i++){ const base=58+i*20; let d=`M0 ${base}`; for(let x=0;x<=120;x+=20) d+=` L${x} ${base-r()*22}`; h+=`<path d="${d} L120 120 L0 120Z" fill="${p[2+i]}"/>`; } return h; },
+  room(seed, p){ const r=rng(seed); const wx=20+r()*50; return `<rect width="120" height="120" fill="${p[0]}"/><path d="M0 84 L120 84 L120 120 L0 120Z" fill="${p[2]}"/><path d="M0 84 L120 84" stroke="${p[3]}" stroke-width="2"/><rect x="${wx}" y="18" width="${30+r()*20}" height="40" fill="${p[1]}" opacity=".85"/><path d="M${wx} 38 h${40}" stroke="${p[0]}" stroke-width="2"/><rect x="${10+r()*40}" y="66" width="${44+r()*20}" height="20" rx="3" fill="${p[4]}"/><rect x="${70+r()*20}" y="52" width="4" height="34" fill="${p[3]}"/><circle cx="${72+r()*20}" cy="50" r="8" fill="${p[1]}" opacity=".6"/>`; },
+  screen(seed, p){ const r=rng(seed); let h=`<rect width="120" height="120" fill="#0d0d0d"/><rect width="120" height="7" fill="#000"/><rect x="96" y="2" width="20" height="3" fill="#33B5E5"/><rect y="7" width="120" height="14" fill="#222"/><rect y="21" width="120" height="1" fill="#33B5E5"/>`;
+    for(let i=0;i<5;i++) h+=`<rect x="8" y="${28+i*17}" width="${40+r()*60}" height="6" fill="#444"/><rect x="8" y="${36+i*17}" width="${20+r()*40}" height="3" fill="#2a2a2a"/>`; return h; },
+  seven(seed){ const r=rng(seed); let h=`<rect width="120" height="120" fill="#0b7a3a"/>`; for(let i=0;i<6;i++) h+=`<rect x="${i*20}" width="10" height="120" fill="#0a6e34"/>`;
+    h+=`<circle cx="60" cy="60" r="22" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.5"/><path d="M60 0V120" stroke="#fff" stroke-opacity=".6" stroke-width="1.5"/>`;
+    h+=`<text x="60" y="${78+r()*6}" text-anchor="middle" font-family="VT323,monospace" font-size="${54+r()*20}" fill="#FFDF00" stroke="#002776" stroke-width="2">7</text>`;
+    for(let i=0;i<8;i++) h+=`<rect x="${r()*120}" y="${r()*120}" width="3" height="5" fill="${['#FFDF00','#fff','#3B6CD9'][i%3]}" transform="rotate(${r()*90} 60 60)"/>`; return h; }
+};
+const photo = (gen, seed, pal, cls='') => `<svg class="${cls}" viewBox="0 0 120 120" preserveAspectRatio="xMidYMid slice">${GEN[gen](seed, pal)}</svg>`;
+const ALBUMS = [
+  {name:'Camera', gen:'land', n:14, pal:['#1d3a4a','#F2A541','#245b6b','#1c4756','#13323d']},
+  {name:'Renders', gen:'room', n:9, pal:['#d9cfc0','#9fd3e8','#8a6a4f','#5c4634','#3f5d6b']},
+  {name:'Screenshots', gen:'screen', n:8, pal:[]},
+  {name:'Downloads', gen:'land', n:6, pal:['#3a2a1d','#ffd27a','#5a392d','#452c23','#33201a']},
+  {name:'Wallpapers', gen:'land', n:5, pal:['#0d1b2a','#33B5E5','#163049','#1d4650','#245b4f']},
+  {name:'Edits', gen:'room', n:7, pal:['#2b2f3a','#FFBB33','#3a3f4d','#1f222b','#AA66CC']},
+  {name:'#7', gen:'seven', n:7, pal:[], secret:true}
+];
+const albumsVisible = () => ALBUMS.map((a,i)=>({...a,i})).filter(a=>!a.secret || S.vini);
+
+/* ---------------- Gallery ---------------- */
+const Gal = { view:'albums', album:0, idx:0, tab:0,
+  open(c){ this.c=c; this.view='albums'; this.render(); },
+  render(){
+    const c=this.c; if(!c) return;
+    setActs(`<button class="act" aria-label="Camera" id="gCam">${svg('camera',22,'#ddd')}</button>`);
+    $('#gCam').onclick=()=>toast('Say cheese! (Camera is not wired up yet.)');
+    if(this.view==='albums'){
+      setTitle('Gallery');
+      const tabs = `<div class="tabs"><button class="${this.tab===0?'on':''}" data-t="0">ALBUMS</button><button class="${this.tab===1?'on':''}" data-t="1">PHOTOS</button></div>`;
+      if(this.tab===0){
+        c.innerHTML = tabs + `<div class="albums">${albumsVisible().map(a=>`<button class="album" data-a="${a.i}" style="background:#222"><span class="st" style="left:0;top:0;right:20px;bottom:20px;opacity:.5">${photo(a.gen,a.i*50+3,a.pal)}</span><span class="st" style="left:10px;top:10px;right:10px;bottom:10px;opacity:.75">${photo(a.gen,a.i*50+2,a.pal)}</span><span class="st" style="left:20px;top:20px;right:0;bottom:0">${photo(a.gen,a.i*50+1,a.pal)}</span><span class="lab"><span>${a.name}</span><span>${a.n}</span></span></button>`).join('')}</div>`;
+      } else {
+        const all = albumsVisible().flatMap(a=>Array.from({length:a.n},(_,k)=>({a:a.i,k})));
+        c.innerHTML = tabs + `<div class="photos">${all.map(p=>`<button data-pa="${p.a}" data-pk="${p.k}">${photo(ALBUMS[p.a].gen,p.a*50+p.k+1,ALBUMS[p.a].pal)}</button>`).join('')}</div>`;
+      }
+      c.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{ this.tab=+b.dataset.t; this.render(); });
+      c.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>this.openAlbum(+b.dataset.a));
+      c.querySelectorAll('[data-pa]').forEach(b=>b.onclick=()=>{ this.album=+b.dataset.pa; this.view='grid'; this.openPhoto(+b.dataset.pk); });
+    } else if(this.view==='grid'){
+      const a=ALBUMS[this.album]; setTitle(a.name);
+      c.innerHTML = `<div class="crumb"><b>${a.name.toUpperCase()}</b><span style="color:#a8a8a8">${a.n} items</span></div><div class="photos">${Array.from({length:a.n},(_,k)=>`<button data-k="${k}" aria-label="Photo ${k+1}">${photo(a.gen,this.album*50+k+1,a.pal)}</button>`).join('')}</div>`;
+      c.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>this.openPhoto(+b.dataset.k));
+    }
+  },
+  openAlbum(i){ this.album=i; this.view='grid'; this.render(); },
+  openPhoto(k){
+    this.idx=k; this.view='photo';
+    let v=$('#viewer'); if(!v){ v=document.createElement('div'); v.id='viewer'; $('#app').appendChild(v); }
+    const a=ALBUMS[this.album];
+    v.innerHTML = `<div class="vbar"><button class="act" id="vClose" aria-label="Close">${svg('back',22,'#ddd')}</button><span style="font-size:15px">${a.name} · ${k+1} / ${a.n}</span><button class="act" id="vShare" aria-label="Share">${svg('more',22,'#ddd')}</button></div><div class="img" id="vImg">${photo(a.gen,this.album*50+k+1,a.pal)}</div><div class="vbar"><button class="act" id="vPrev" aria-label="Previous">${svg('left',22,'#ddd')}</button><span style="font-size:12px;color:#888">Swipe to browse</span><button class="act" id="vNext" aria-label="Next">${svg('right',22,'#ddd')}</button></div>`;
+    $('#vClose').onclick=()=>this.back();
+    $('#vShare').onclick=()=>toast('Sharing needs a data plan from 2012.');
+    $('#vPrev').onclick=()=>this.step(-1); $('#vNext').onclick=()=>this.step(1);
+    const im=$('#vImg'); let x0=null;
+    im.onpointerdown=e=>{ x0=e.clientX; };
+    im.onpointerup=e=>{ if(x0===null) return; const d=e.clientX-x0; x0=null; if(Math.abs(d)>40) this.step(d<0?1:-1); };
+  },
+  step(d){ const a=ALBUMS[this.album]; this.openPhoto((this.idx+d+a.n)%a.n); },
+  back(){
+    if(this.view==='photo'){ const v=$('#viewer'); if(v) v.remove(); this.view='grid'; this.render(); return true; }
+    if(this.view==='grid'){ this.view='albums'; this.render(); return true; }
+    return false;
+  },
+  close(){ const v=$('#viewer'); if(v) v.remove(); this.c=null; }
+};
+APP_IMPL.gallery = Gal;
+
+/* ---------------- Music (Web Audio chiptunes) ---------------- */
+const TRACKS = [
+  {t:'Midnight Static', a:'RetroOS Band', bpm:112, wave:'square', c:'#33B5E5',
+   lead:'A4 - C5 E5 - A4 G4 - F4 - A4 C5 - B4 G4 -', bass:'A2 - A2 - F2 - F2 - C3 - C3 - G2 - G2 -'},
+  {t:'Neon Overpass', a:'RetroOS Band', bpm:128, wave:'square', c:'#AA66CC',
+   lead:'E5 D5 B4 - E5 D5 B4 - G5 F#5 E5 - D5 B4 A4 -', bass:'E2 E3 E2 E3 C3 C2 C3 C2 G2 G3 G2 G3 D3 D2 D3 D2'},
+  {t:'Cassette Rain', a:'RetroOS Band', bpm:86, wave:'triangle', c:'#99CC00',
+   lead:'C5 - G4 - E5 - D5 C5 A4 - - G4 E4 - G4 -', bass:'C3 - - - A2 - - - F2 - - - G2 - - -'},
+  {t:'Snake Charmer', a:'RetroOS Band', bpm:140, wave:'sawtooth', c:'#FFBB33',
+   lead:'D5 Eb5 F#5 G5 A5 - G5 F#5 Eb5 - D5 - C5 D5 - -', bass:'D2 - D3 - D2 - D3 - C2 - C3 - D2 - D3 -'},
+  {t:'Kovai Breeze', a:'for Lalith', bpm:100, wave:'triangle', c:'#99CC00', kovai:true,
+   lead:'D5 - E5 F#5 A5 - F#5 E5 D5 - B4 A4 B4 - D5 -', bass:'D3 - A2 - D3 - A2 - G2 - D3 - A2 - D3 -'}
+];
+const NOTE={C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11};
+const freq = n => { const m=n.match(/^([A-G][#b]?)(\d)$/); const midi=12*(+m[2]+1)+NOTE[m[1]]; return 440*Math.pow(2,(midi-69)/12); };
+const DUR = 96;
+const Music = { cur:0, playing:false, ctx:null, step:0, next:0, timer:null, start:0, offset:0, shuffle:false, rep:true, ui:null,
+  list(){ return TRACKS.map((t,i)=>({...t,i})).filter(t=>!t.kovai || S.kovai); },
+  ensure(){ if(!this.ctx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return false; this.ctx=new AC(); this.master=this.ctx.createGain(); this.master.gain.value=.6; this.master.connect(this.ctx.destination); } if(this.ctx.state==='suspended') this.ctx.resume(); return true; },
+  note(f,t,d,type,v){ const o=this.ctx.createOscillator(), g=this.ctx.createGain(); o.type=type; o.frequency.value=f; g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+.01); g.gain.exponentialRampToValueAtTime(.0008,t+d); o.connect(g); g.connect(this.master); o.start(t); o.stop(t+d+.02); },
+  kick(t){ const o=this.ctx.createOscillator(), g=this.ctx.createGain(); o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(40,t+.12); g.gain.setValueAtTime(.35,t); g.gain.exponentialRampToValueAtTime(.001,t+.15); o.connect(g); g.connect(this.master); o.start(t); o.stop(t+.16); },
+  sched(){
+    const tr=TRACKS[this.cur], sd=60/tr.bpm/2, L=tr.lead.split(' '), B=tr.bass.split(' ');
+    while(this.next < this.ctx.currentTime+.12){
+      const s=this.step%16;
+      if(L[s]!=='-') this.note(freq(L[s]),this.next,sd*.9,tr.wave,tr.wave==='triangle'?.16:.06);
+      if(B[s]!=='-') this.note(freq(B[s]),this.next,sd*.95,'triangle',.18);
+      if(s%4===0) this.kick(this.next);
+      this.next+=sd; this.step++;
+    }
+    if(this.elapsed()>=DUR) this.skip(1, true);
+  },
+  elapsed(){ return this.playing ? this.offset + (this.ctx.currentTime - this.start) : this.offset; },
+  play(){ if(!this.ensure()){ toast('Audio is not supported in this browser.'); return; } this.playing=true; this.start=this.ctx.currentTime; this.next=this.ctx.currentTime+.05; clearInterval(this.timer); this.timer=setInterval(()=>this.sched(),25); drawStatus(); this.draw(); },
+  pause(){ if(!this.playing) return; this.offset=this.elapsed(); this.playing=false; clearInterval(this.timer); drawStatus(); this.draw(); },
+  toggle(){ this.playing ? this.pause() : this.play(); },
+  load(i, autoplay){ const was=this.playing||autoplay; this.pause(); this.cur=i; this.offset=0; this.step=0; if(was) this.play(); else this.draw(); },
+  skip(d, auto){
+    const l=this.list(); let pos=l.findIndex(t=>t.i===this.cur);
+    if(this.shuffle && l.length>1){ let n; do{ n=Math.floor(Math.random()*l.length); }while(n===pos); pos=n; }
+    else pos=(pos+d+l.length)%l.length;
+    if(auto && !this.rep && pos===0){ this.pause(); this.offset=0; this.draw(); return; }
+    this.load(l[pos].i, true);
+  },
+  open(c){ this.ui=c; this.draw(); this.raf(); },
+  close(){ this.ui=null; cancelAnimationFrame(this.rf); },
+  raf(){ const loop=()=>{ if(!this.ui) return; const e=this.elapsed(), p=Math.min(1,e/DUR); const f=this.ui.querySelector('.fill'), th=this.ui.querySelector('.th'), ct=this.ui.querySelector('#mCur'); if(f){ f.style.width=p*100+'%'; th.style.left=p*100+'%'; ct.textContent=fmt(e); } this.rf=requestAnimationFrame(loop); }; this.rf=requestAnimationFrame(loop); },
+  draw(){
+    const c=this.ui; if(!c) return; const tr=TRACKS[this.cur];
+    setTitle('Now playing');
+    setActs(`<button class="act" id="mList" aria-label="Playlist">${svg('notes',22,'#ddd')}</button>`);
+    $('#mList').onclick=()=>c.querySelector('#upnext').scrollIntoView({behavior:'smooth'});
+    c.innerHTML = `<div style="display:flex;flex-direction:column;min-height:100%" class="${this.playing?'':'paused'}">
+      <div class="art"><svg class="spin" viewBox="0 0 260 260" fill="none" aria-hidden="true"><circle cx="130" cy="130" r="124" fill="#0c0c0c"/>${[110,96,82,68].map(r=>`<circle cx="130" cy="130" r="${r}" stroke="#2a2a2a"/>`).join('')}<path d="M40 90 A 100 100 0 0 1 120 30" stroke="${tr.c}" stroke-opacity=".5" stroke-width="2"/><circle cx="130" cy="130" r="40" fill="${tr.c}"/><circle cx="130" cy="130" r="5" fill="#0c0c0c"/></svg></div>
+      <div style="margin:18px 24px 0;display:flex;flex-direction:column;gap:4px"><span style="font-size:21px">${tr.t}</span><span style="font-size:14px;color:#a8a8a8">${tr.a} · RetroOS Sessions</span></div>
+      <div style="margin:14px 24px 0"><div class="seek" id="mSeek"><div class="bg"></div><div class="fill"></div><div class="th"></div></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#a8a8a8"><span id="mCur">0:00</span><span>${fmt(DUR)}</span></div></div>
+      <div class="ctrls">
+        <button id="mShuf" aria-label="Shuffle" aria-pressed="${this.shuffle}">${svg('shuffle',22,this.shuffle?'#33B5E5':'#9a9a9a')}</button>
+        <button id="mPrev" aria-label="Previous">${svg('prev',30)}</button>
+        <button class="big" id="mPlay" aria-label="${this.playing?'Pause':'Play'}">${svg(this.playing?'pause':'play',30)}</button>
+        <button id="mNext" aria-label="Next">${svg('next',30)}</button>
+        <button id="mRep" aria-label="Repeat" aria-pressed="${this.rep}">${svg('repeat',22,this.rep?'#33B5E5':'#9a9a9a')}</button>
+      </div>
+      <div class="sect" id="upnext" style="margin-top:14px">PLAYLIST</div>
+      ${this.list().map(t=>`<button class="row trow ${t.i===this.cur?'on':''}" data-tr="${t.i}" style="min-height:52px"><span style="width:36px;height:36px;flex:none;background:${t.c};opacity:.6"></span><span class="tx"><b style="font-size:15px">${t.t}</b><small>${t.a}</small></span><span style="font-size:12px;color:#a0a0a0">${fmt(DUR)}</span></button>`).join('')}
+    </div>`;
+    $('#mPlay').onclick=()=>this.toggle();
+    $('#mPrev').onclick=()=>{ if(this.elapsed()>3){ this.load(this.cur,this.playing); } else this.skip(-1); };
+    $('#mNext').onclick=()=>this.skip(1);
+    $('#mShuf').onclick=()=>{ this.shuffle=!this.shuffle; this.draw(); toast(this.shuffle?'Shuffle on':'Shuffle off',1200); };
+    $('#mRep').onclick=()=>{ this.rep=!this.rep; this.draw(); toast(this.rep?'Repeat all':'Repeat off',1200); };
+    c.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>this.load(+b.dataset.tr,true));
+    const sk=$('#mSeek'); const seek=e=>{ const r=sk.getBoundingClientRect(); const p=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)); const wasP=this.playing; this.pause(); this.offset=p*DUR; if(wasP) this.play(); };
+    sk.onpointerdown=seek;
+  }
+};
+const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+APP_IMPL.music = Music;
+
+/* ---------------- Files ---------------- */
+const dir = (name, children, meta) => ({name, type:'dir', children, meta});
+function fsTree(){
+  const imgs = (ai, n) => Array.from({length:n},(_,k)=>({name:`${ALBUMS[ai].name==='Camera'?'IMG':'IMG_'+ALBUMS[ai].name.toUpperCase().replace('#','NO')}_${String(k+1).padStart(4,'0')}.jpg`, type:'img', a:ai, k, meta:`${(300+((k*137)%900))} KB`}));
+  const songs = Music.list().map(t=>({name:t.t.toLowerCase().replace(/ /g,'_')+'.mid', type:'song', tr:t.i, meta:'Chiptune · '+fmt(DUR)}));
+  const root = [
+    dir('DCIM', [dir('Camera', imgs(0,14), '14 items')], '1 item'),
+    dir('Download', imgs(3,6), '6 items'),
+    dir('Music', songs, songs.length+' items'),
+    dir('Pictures', [dir('Renders', imgs(1,9), '9 items'), dir('Screenshots', imgs(2,8), '8 items'), dir('Edits', imgs(5,7), '7 items')], '3 items'),
+    dir('Documents', [
+      {name:'todo.txt', type:'txt', meta:'1 KB', body:'1. Finish RetroOS\n2. Beat my Snake high score\n3. Push to GitHub\n4. Ask Lalith about the Kovai trip'},
+      {name:'changelog.txt', type:'txt', meta:'1 KB', body:'RetroOS 4.0.4\n- Swipe to unlock\n- Gallery, Files, Music, Snake, Settings\n- Holo everywhere\n- Some things are hidden. Look around.'}
+    ], '2 items'),
+    dir('Ringtones', [{name:'beep_beep.ogg', type:'txt', meta:'12 KB', body:'This ringtone is so retro it only plays in your imagination.'}], '1 item')
+  ];
+  if(S.vini) root.push(dir('#7', imgs(6,7), '7 items'));
+  if(S.kovai) root.push(dir('kovai', [
+    {name:'vanakkam_maapla.txt', type:'txt', meta:'1 KB', body:'Vanakkam, maapla!\n\nThis folder belongs to Lalith, the official Kovai consultant of RetroOS.\n\nCheck list for a Kovai weekend:\n- Filter coffee, strong decoction\n- Sunset view of the Western Ghats\n- Breezy evening walk\n- Weekend drive up towards Ooty'},
+    {name:'kovai_breeze.mid', type:'song', tr:4, meta:'Chiptune · for Lalith'}
+  ], '2 items'));
+  root.push({name:'readme.txt', type:'txt', meta:'2 KB', body:'Welcome to RetroOS!\n\nA vintage Android tribute built by Nikil.\n\nTips:\n- Back, Home and Recents work like 2012.\n- Arrow keys play Snake on a keyboard.\n- Some things are hidden. Try long-pressing, tapping things many times and old cheat codes.'});
+  root.push({name:'snake_save.dat', type:'txt', meta:'1 KB', body:'', dyn:'snake'});
+  return root;
+}
+const Files = { path:[],
+  open(c){ this.c=c; this.path=[]; this.render(); },
+  node(){ let n=fsTree(); for(const p of this.path){ const d=n.find(x=>x.name===p); if(!d) { this.path=[]; return fsTree(); } n=d.children; } return n; },
+  render(){
+    const c=this.c; if(!c) return; const items=this.node();
+    setTitle(this.path.length ? this.path[this.path.length-1] : 'Files');
+    setActs(`<button class="act" id="fUp" aria-label="Up one folder">${svg('back',22,this.path.length?'#ddd':'#555')}</button>`);
+    $('#fUp').onclick=()=>this.back();
+    const ico = it => it.type==='dir' ? `<svg width="30" height="30" viewBox="0 0 24 24" fill="#FFBB33"><path d="M3 6h6l2 2h10v11H3z"/></svg>`
+      : it.type==='img' ? svg('gallery',30,'#33B5E5',1.6) : it.type==='song' ? svg('music',30,'#AA66CC',1.6) : svg('file',30,'#bbb',1.6);
+    c.innerHTML = `<div class="crumb"><b>/ SDCARD${this.path.map(p=>' / '+p.toUpperCase()).join('')}</b><span style="color:#a8a8a8">4.2 GB free</span></div><div class="meter"><i style="width:74%"></i></div>` +
+      items.map((it,i)=>`<button class="row" data-i="${i}">${ico(it)}<span class="tx"><b>${it.name}</b><small>${it.meta||''}</small></span>${it.type==='dir'?svg('chev',18,'#777'):''}</button>`).join('');
+    c.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>this.tap(items[+b.dataset.i]));
+  },
+  tap(it){
+    if(it.type==='dir'){ this.path.push(it.name); this.render(); this.c.scrollTop=0; return; }
+    if(it.type==='img'){ openApp('gallery'); Gal.album=it.a; Gal.view='grid'; Gal.render(); Gal.openPhoto(it.k); return; }
+    if(it.type==='song'){ openApp('music'); Music.load(it.tr, true); return; }
+    const body = it.dyn==='snake' ? `HIGH_SCORE=${S.best}\nPOWER_MODE=${store.get('used9000',false)?'DISCOVERED':'???'}\nGOLAZO=${S.vini?'DISCOVERED':'???'}` : it.body;
+    dialog(it.name, `<pre style="margin:0;white-space:pre-wrap;font-family:VT323,monospace;font-size:19px;line-height:1.25;color:#ddd">${body.replace(/</g,'&lt;')}</pre>`);
+  },
+  back(){ if(this.path.length){ this.path.pop(); this.render(); return true; } return false; },
+  close(){ this.c=null; }
+};
+APP_IMPL.files = Files;
+
+/* ---------------- Snake ---------------- */
+const N=18, CELL=19;
+const DIRS={U:[0,-1],D:[0,1],L:[-1,0],R:[1,0]};
+const Snake = {
+  open(c){
+    this.c=c;
+    setActs(`<span class="speedTag" id="sTag">2× SPEED</span><button class="act" id="sPause" aria-label="Pause">${svg('pause',22)}</button>`);
+    c.style.overflow='hidden';
+    c.innerHTML = `<div class="snakeWrap">
+      <div class="score"><span class="s">SCORE <b id="sScore">0000</b></span><span class="b">BEST <span id="sBest">${pad4(S.best)}</span></span></div>
+      <div class="board" id="sBoard"><canvas id="sCv" width="${N*CELL}" height="${N*CELL}" aria-label="Snake board"></canvas><div class="banner9000" id="b9"><span>POWER LEVEL</span><b>OVER 9000!</b></div></div>
+      <div class="pad" id="sPad">
+        <span></span><button data-d="U" aria-label="Up" style="color:#ddd">${svg('up',24,'none')}</button><span></span>
+        <button data-d="L" aria-label="Left" style="color:#ddd">${svg('left',24,'none')}</button><span class="mid"><i></i></span><button data-d="R" aria-label="Right" style="color:#ddd">${svg('right',24,'none')}</button>
+        <span></span><button data-d="D" aria-label="Down" style="color:#ddd">${svg('down',24,'none')}</button><span></span>
+      </div></div>`;
+    this.cv=$('#sCv'); this.g=this.cv.getContext('2d');
+    $('#sPause').onclick=()=>this.togglePause();
+    $('#sPad').querySelectorAll('[data-d]').forEach(b=>b.addEventListener('pointerdown',e=>{ e.preventDefault(); this.input(b.dataset.d); }));
+    let sx,sy; this.cv.addEventListener('pointerdown',e=>{ sx=e.clientX; sy=e.clientY; });
+    this.cv.addEventListener('pointerup',e=>{ const dx=e.clientX-sx, dy=e.clientY-sy; if(Math.max(Math.abs(dx),Math.abs(dy))<20){ if(!this.alive) this.reset(); else if(!this.running) this.go(); return; } this.input(Math.abs(dx)>Math.abs(dy)?(dx>0?'R':'L'):(dy>0?'D':'U')); });
+    this.reset();
+  },
+  reset(){
+    this.body=[[5,9],[4,9],[3,9]]; this.dir='R'; this.q=[]; this.score=0; this.alive=true; this.running=false;
+    this.power=false; this.usedPower=false; this.combo=[]; this.place(); this.setPower(false); this.updScore(); this.draw();
+    this.msg='TAP OR PRESS A DIRECTION';
+    this.draw();
+  },
+  place(){ do{ this.food=[Math.floor(Math.random()*N), Math.floor(Math.random()*N)]; }while(this.body.some(b=>b[0]===this.food[0]&&b[1]===this.food[1])); },
+  input(d){
+    this.combo.push({d,t:Date.now()}); this.combo=this.combo.slice(-6);
+    if(this.combo.length===6 && this.combo.map(x=>x.d).join('')==='UUDDLR' && Date.now()-this.combo[0].t<5000){ this.combo=[]; this.goku(); return; }
+    if(!this.alive){ this.reset(); return; }
+    const last = this.q.length ? this.q[this.q.length-1] : this.dir;
+    const opp={U:'D',D:'U',L:'R',R:'L'};
+    if(d!==last && d!==opp[last] && this.q.length<3) this.q.push(d);
+    if(!this.running) this.go();
+  },
+  go(){ if(!this.alive || $('#golazo')) return; this.running=true; this.msg=''; clearTimeout(this.t); this.loop(); const p=$('#sPause'); if(p) p.innerHTML=svg('pause',22); },
+  togglePause(){
+    if(!this.alive) { this.reset(); return; }
+    if(this.running){ this.running=false; clearTimeout(this.t); this.msg='PAUSED'; this.draw(); $('#sPause').innerHTML=svg('play',22); }
+    else this.go();
+  },
+  loop(){
+    if(!this.running) return;
+    this.tick();
+    this.t=setTimeout(()=>this.loop(), this.power ? 65 : Math.max(85, 140 - Math.floor(this.score/50)*5));
+  },
+  tick(){
+    if(this.q.length) this.dir=this.q.shift();
+    const [dx,dy]=DIRS[this.dir]; const h=this.body[0];
+    const nh=[(h[0]+dx+N)%N, (h[1]+dy+N)%N];
+    const eat = nh[0]===this.food[0] && nh[1]===this.food[1];
+    const bodyCheck = eat ? this.body : this.body.slice(0,-1);
+    if(bodyCheck.some(b=>b[0]===nh[0]&&b[1]===nh[1])){ return this.over(); }
+    this.body.unshift(nh);
+    if(eat){
+      this.score += this.power ? 20 : 10; this.place(); this.updScore();
+      if(!this.power && Math.random() < 1/7) { this.draw(); this.golazo(); return; }
+    } else this.body.pop();
+    this.draw();
+  },
+  over(){
+    this.running=false; this.alive=false; clearTimeout(this.t); this.setPower(false);
+    if(this.score>S.best){ S.best=this.score; store.set('best',S.best); $('#sBest').textContent=pad4(S.best); this.msg='NEW HIGH SCORE!'; } else this.msg='GAME OVER';
+    this.draw(true);
+    if(navigator.vibrate) navigator.vibrate(120);
+  },
+  updScore(){ const e=$('#sScore'); if(e) e.textContent=pad4(this.score); },
+  setPower(on){
+    this.power=on; const b=$('#sBoard'), p=$('#sPad'), a=$('#abar');
+    if(b) b.classList.toggle('power',on); if(p) p.classList.toggle('power',on); if(a) a.classList.toggle('power',on);
+    $('#sPad') && $('#sPad').querySelectorAll('button').forEach(x=>x.style.color=on?'#FF8800':'#ddd');
+  },
+  goku(){
+    if(!this.alive) this.reset();
+    if(!this.usedPower){ this.score+=9000; this.usedPower=true; this.updScore(); }
+    store.set('used9000', true);
+    this.setPower(true); const b9=$('#b9'); b9.classList.add('show'); setTimeout(()=>b9.classList.remove('show'), 2200);
+    if(navigator.vibrate) navigator.vibrate([60,40,60,40,200]);
+    clearTimeout(this.pt); this.pt=setTimeout(()=>{ this.setPower(false); toast('Power mode faded. Back to normal speed.'); }, 15000);
+    if(!this.running) this.go();
+  },
+  golazo(){
+    this.running=false; clearTimeout(this.t);
+    this.score+=77; this.updScore();
+    const first=!S.vini; S.vini=true; store.set('vini',true);
+    const g=document.createElement('div'); g.id='golazo';
+    const cols=['#FFDF00','#009C3B','#3B6CD9','#ffffff'];
+    let conf=''; for(let i=0;i<46;i++) conf+=`<i class="conf" style="left:${Math.random()*100}%;background:${cols[i%4]};animation-duration:${1.4+Math.random()*1.8}s;animation-delay:${Math.random()*.6}s;transform:rotate(${Math.random()*90}deg)"></i>`;
+    g.innerHTML = conf + `<div class="card" role="dialog" aria-label="Golazo bonus"><svg class="ball" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.4"><circle cx="12" cy="12" r="10"/><path d="M12 7.5l4.3 3.1-1.6 5h-5.4l-1.6-5z" fill="#fff"/><path d="M12 2v5.5M16.3 10.6l5.2-1.7M14.7 15.6l3.2 4.4M9.3 15.6l-3.2 4.4M7.7 10.6L2.5 8.9"/></svg><span class="g">GOLAZO!</span><span style="font-size:16px">Vini Jr. style · <span style="color:#FFDF00">+77 bonus</span></span><span style="font-size:13px;color:#b0b0b0;text-align:center">${first?'Samba celebration unlocked. New album "#7" added to Gallery.':'Samba celebration! Another one for the #7 album.'}</span><button class="ok" id="gOk">KEEP PLAYING</button></div>`;
+    $('#app').appendChild(g);
+    if(navigator.vibrate) navigator.vibrate([40,30,40,30,40]);
+    $('#gOk').onclick=()=>{ g.remove(); this.go(); };
+  },
+  draw(){
+    const g=this.g; if(!g) return; const P=this.power;
+    g.fillStyle = P ? '#0b1a3a' : '#9BBC0F'; g.fillRect(0,0,N*CELL,N*CELL);
+    g.strokeStyle = P ? 'rgba(91,141,255,.12)' : 'rgba(15,56,15,.07)'; g.lineWidth=1;
+    for(let i=1;i<N;i++){ g.beginPath(); g.moveTo(i*CELL+.5,0); g.lineTo(i*CELL+.5,N*CELL); g.stroke(); g.beginPath(); g.moveTo(0,i*CELL+.5); g.lineTo(N*CELL,i*CELL+.5); g.stroke(); }
+    // food
+    g.fillStyle = P ? '#FFDD55' : '#0F380F'; g.shadowColor = P ? '#FFDD55' : 'transparent'; g.shadowBlur = P ? 10 : 0;
+    g.beginPath(); g.arc(this.food[0]*CELL+CELL/2, this.food[1]*CELL+CELL/2, CELL/2-2, 0, Math.PI*2); g.fill();
+    // snake
+    g.shadowColor = P ? '#FF8800' : 'transparent'; g.shadowBlur = P ? 12 : 0;
+    this.body.forEach((b,i)=>{
+      g.fillStyle = P ? (i===0?'#FFB347':i<this.body.length*0.6?'#FF8800':'#C05800') : (i<this.body.length-3 || this.body.length<6 ? '#0F380F' : '#306230');
+      g.fillRect(b[0]*CELL+1, b[1]*CELL+1, CELL-2, CELL-2);
+    });
+    g.shadowBlur=0;
+    // eyes
+    const h=this.body[0], [dx,dy]=DIRS[this.dir]; g.fillStyle = P ? '#0b1a3a' : '#9BBC0F';
+    const cx=h[0]*CELL+CELL/2, cy=h[1]*CELL+CELL/2;
+    [[-1,1],[1,1]].forEach(([a])=>{ const ex=cx+dx*4+(dy?a*4:0), ey=cy+dy*4+(dx?a*4:0); g.fillRect(ex-1.5,ey-1.5,3,3); });
+    if(this.msg){
+      g.fillStyle = P ? 'rgba(11,26,58,.7)' : 'rgba(155,188,15,.75)'; g.fillRect(0, N*CELL/2-34, N*CELL, 68);
+      g.fillStyle = P ? '#FF8800' : '#0F380F'; g.textAlign='center'; g.font='28px VT323, monospace';
+      g.fillText(this.msg, N*CELL/2, N*CELL/2+2);
+      if(!this.alive){ g.font='20px VT323, monospace'; g.fillText('TAP TO PLAY AGAIN', N*CELL/2, N*CELL/2+24); }
+    }
+  },
+  back(){ return false; },
+  close(){ this.running=false; clearTimeout(this.t); clearTimeout(this.pt); this.g=null; this.c=null; }
+};
+const pad4 = n => String(n).padStart(4,'0');
+APP_IMPL.snake = Snake;
+document.addEventListener('keydown', e=>{
+  if(S.app!=='snake' || dialogOpen()) return;
+  const m={ArrowUp:'U',ArrowDown:'D',ArrowLeft:'L',ArrowRight:'R',w:'U',s:'D',a:'L',d:'R'};
+  if(m[e.key]){ e.preventDefault(); Snake.input(m[e.key]); }
+  else if(e.key===' '||e.key==='p'){ e.preventDefault(); const g=$('#golazo'); if(g){ g.remove(); Snake.go(); } else Snake.togglePause(); }
+});
+
+/* ---------------- Settings ---------------- */
+const WALLS=['Holo streaks','Midnight black','Holo grid'];
+const Settings = { view:'main', taps:0,
+  open(c){ this.c=c; this.view='main'; this.render(); },
+  render(){
+    const c=this.c; if(!c) return; setActs('');
+    const tog=(id,on)=>`<button class="tog ${on?'on':''}" id="${id}" aria-pressed="${on}" aria-label="${id}"><span>${on?'':'OFF'}</span><span>${on?'ON':''}</span></button>`;
+    const row=(g,t,sub,id,extra='')=>`<button class="row" ${id?`id="${id}"`:''}>${svg(g,24,'#ccc')}<span class="tx"><b>${t}</b>${sub?`<small>${sub}</small>`:''}</span>${extra}</button>`;
+    if(this.view==='main'){
+      setTitle('Settings');
+      c.innerHTML = `<div class="sect">WIRELESS &amp; NETWORKS</div>
+        <div class="row">${svg('wifi',24,'#ccc')}<span class="tx"><b>Wi-Fi</b>${S.wifi?'<small>Connected to RetroNet_2G</small>':''}</span>${tog('Wi-Fi',S.wifi)}</div>
+        <div class="row">${svg('bt',24,'#ccc')}<span class="tx"><b>Bluetooth</b></span>${tog('Bluetooth',S.bt)}</div>
+        ${row('data','Data usage','12.4 MB used this month','sData')}
+        <div class="sect">DEVICE</div>
+        ${row('sound','Sound','Volume, ringtone','sSound')}
+        ${row('display','Display','Brightness, sleep','sDisp')}
+        ${row('gallery','Wallpaper', S.kovai?'Western Ghats (Kovai Mode)':WALLS[S.wall],'sWall')}
+        ${row('storage','Storage','4.2 GB free of 16 GB','sStor')}
+        ${row('battery','Battery',`${S.battery}% · about ${Math.round(S.battery/10)} hours left`,'sBat')}
+        <div class="sect">SYSTEM</div>
+        ${row('clock','Date &amp; time','Automatic','sDate')}
+        ${row('info','About phone','RetroOS 4.0.4','sAbout')}
+        <div style="height:24px"></div>`;
+      $('#Wi-Fi').onclick=()=>{ S.wifi=!S.wifi; store.set('wifi',S.wifi); drawStatus(); this.render(); };
+      $('#Bluetooth').onclick=()=>{ S.bt=!S.bt; store.set('bt',S.bt); drawStatus(); this.render(); toast(S.bt?'Bluetooth on. Nothing to pair with in 2012.':'Bluetooth off',1500); };
+      $('#sWall').onclick=()=>{ if(S.kovai){ toast('Kovai Mode controls the wallpaper. Long-press the weather to exit.'); return; } S.wall=(S.wall+1)%WALLS.length; store.set('wall',S.wall); applyWall(); this.render(); toast('Wallpaper: '+WALLS[S.wall],1400); };
+      $('#sAbout').onclick=()=>{ this.view='about'; this.taps=0; this.render(); };
+      ['sData','sSound','sDisp','sStor','sBat','sDate'].forEach(id=>$('#'+id).onclick=()=>toast('Nothing to tweak here yet.',1400));
+    } else {
+      setTitle('About phone');
+      c.innerHTML = `${['Model number|Retro One','RetroOS version|4.0.4','Baseband version|BLR-2026','Kernel version|3.0.8-retro'].map(s=>{ const [a,b]=s.split('|'); return `<div class="row"><span class="tx"><b>${a}</b><small>${b}</small></span></div>`; }).join('')}
+        <button class="row" id="build"><span class="tx"><b>Build number</b><small>NIK.20261031</small></span></button>
+        <div class="row"><span class="tx"><b>Device owner</b><small>Nikil</small></span></div>`;
+      $('#build').onclick=()=>this.tapBuild();
+    }
+  },
+  tapBuild(){
+    if(S.dev){ this.taps++; if(this.taps>=3){ this.taps=0; this.credits(); } else toast('No need, you are already a developer.',1300); return; }
+    this.taps++;
+    const left=7-this.taps;
+    if(left<=0){ S.dev=true; store.set('dev',true); toast('You are now a developer!'); setTimeout(()=>this.credits(), 900); }
+    else if(left<=4) toast(`You are now ${left} step${left>1?'s':''} away from being a developer.`,1000);
+  },
+  credits(){
+    dialog('Credits', `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:12px"><div style="width:72px;height:72px;border-radius:50%;border:2px solid #33B5E5;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:300;color:#33B5E5">N</div><div style="font-size:12px;letter-spacing:2px;color:#a8a8a8;margin-top:8px">RETROOS · DESIGNED &amp; BUILT BY</div><div style="font-size:30px;font-weight:300;color:#fff">Nikil Kumar</div></div>
+      <div class="credit"><span>Kovai consultant</span><span>Lalith</span></div>
+      <div class="credit"><span>Power levels</span><span>Over 9000</span></div>
+      <div class="credit"><span>Samba moves</span><span>Vini Jr. #7</span></div>
+      <div class="credit" style="border:0"><span>Made in</span><span>Bengaluru</span></div>`);
+  },
+  back(){ if(this.view!=='main'){ this.view='main'; this.render(); return true; } return false; },
+  close(){ this.c=null; }
+};
+APP_IMPL.settings = Settings;
+
+/* ---------------- fit to screen ---------------- */
+let SC=1;
+const scale = () => SC;
+function fit(){
+  const mobile = window.innerWidth < 520 || (window.matchMedia('(pointer:coarse)').matches && window.innerWidth < 900);
+  document.body.classList.toggle('mobile', mobile);
+  const dev=$('#device');
+  if(mobile){ SC=1; dev.style.transform=''; return; }
+  SC = Math.min(1, (window.innerHeight-56)/(844+28), (window.innerWidth-32)/(390+28));
+  dev.style.transform=`scale(${SC})`;
+}
+window.addEventListener('resize', fit);
+
+/* ---------------- boot ---------------- */
+document.body.classList.add('locked');
+applyWall(); applyKovai(); tickClock(); drawStatus(); fit();
+})();
+</script>
+</body>
+</html>
